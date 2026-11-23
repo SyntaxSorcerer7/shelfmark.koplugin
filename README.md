@@ -25,7 +25,7 @@ Book downloads run on Shelfmark. To obtain the resulting book on the reader, use
 | OPDS Plus | The catalog handoff was tested with v1.2.0 and an isolated OPDS catalog. Required for **Buch öffnen**. |
 | Catalog | Must advertise an OPDS search endpoint. |
 
-The automated smoke test uses stand-ins for KOReader and Shelfmark. It covers program behavior, including offline caching and window cleanup. Earlier simulator checks covered search, details, cover rendering, edition selection, queue submission and OPDS handoff. The full current release still needs an end-to-end run on physical hardware against a personal Shelfmark installation.
+The smoke test uses stand-ins for KOReader and Shelfmark. The end-to-end Action runs the official KOReader v2026.07.1 Linux application, OPDS Plus v1.2.0 and a pinned Shelfmark v1.7.0 container. Real authentication, HTTP routes, widgets, queue processing and file output are exercised. Metadata and download-source adapters supply a generated test book. Physical-device testing against a personal Shelfmark installation remains open.
 
 Shelfmark API endpoints used by the plugin are `/api/auth/login`, `/api/metadata/providers`, `/api/metadata/search`, `/api/metadata/book/<provider>/<id>`, `/api/releases`, `/api/releases/download`, `/api/activity/snapshot`, `/api/activity/history` and the fallback `/api/status`. Cover URLs come from the server response.
 
@@ -92,7 +92,15 @@ luajit tests/smoke.lua
 
 The test uses synthetic credentials, responses and temporary files. It requires a Unix-like environment with `mkdir` and `rmdir`. It checks search parameters, session renewal, activity restoration and refresh failures, the 64-cover limit, OPDS handoff and lifecycle cleanup.
 
-`tests/e2e_server.py` is an optional developer fixture that runs inside a Shelfmark environment with its dependencies installed. It creates deterministic metadata, a synthetic EPUB and an isolated authentication database under `/tmp/shelfmark-e2e-auth`. Run it only in a disposable test environment. It is not a standalone integration test runner and is not needed to install the plugin.
+### End to end checks
+
+The **End-to-end tests** Action runs on branch pushes and pull requests and can also be started manually from GitHub Actions. Release publication depends on its successful completion.
+
+The Action starts a pinned Shelfmark container and launches the real KOReader Linux application under Xvfb. `tests/e2e.lua` drives real dialog and menu callbacks through a late user patch. It checks author search, active-provider filtering, authenticated search results, book details, edition confirmation, completed server-side EPUB output, cached activity and covers, and the OPDS Plus search handoff. It then stops Shelfmark and starts a fresh KOReader process with the same isolated settings to verify offline restoration and preservation after a failed refresh.
+
+Logs, screenshots and pass markers are uploaded as the `e2e-results` artifact for seven days, including on failures. Each KOReader scenario has a two-minute timeout and the job has a fifteen-minute limit. No personal account or external book source is required.
+
+`tests/e2e_server.py` replaces external metadata and download-source adapters with deterministic fixtures. Shelfmark's routes, authentication, registry checks, queue and post-processing remain active. The fixture creates its own synthetic credentials, EPUB and database under `/tmp/shelfmark-e2e-auth` inside the disposable container. The pinned dependencies are declared in `.github/workflows/e2e.yml`.
 
 Build the installable archive with Python 3.
 
@@ -106,7 +114,7 @@ Report issues with KOReader, Shelfmark and OPDS Plus versions, device model, rep
 
 ## Publishing a release
 
-Pushes and pull requests run the smoke tests and build and check the installable archive. Pushing a tag beginning with `v` also runs the release workflow. Publication starts only after the checks pass and the tag exactly matches the version in `_meta.lua`.
+Pushes and pull requests run the smoke tests and build and check the installable archive. Pushing a tag beginning with `v` also runs the release workflow. Publication starts only after the smoke and end-to-end checks pass and the tag exactly matches the version in `_meta.lua`.
 
 To publish a new version, update `_meta.lua`, commit and push that change, then tag the commit and push the tag. For example, with `version = "0.2.0"` committed on `main`, run the following commands.
 

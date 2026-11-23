@@ -30,7 +30,7 @@ jobs:
           git clone https://github.com/greywolf1499/opds_plus.koplugin.git "$runtime/plugins/opds_plus.koplugin"
           git -C "$runtime/plugins/opds_plus.koplugin" checkout 81bf01cd6337145b529ba9ff1d872db62cd8f0bf
           cp tests/e2e.lua "$RUNNER_TEMP/e2e-home/patches/2-shelfmark-e2e.lua"
-          printf 'return { language="en", start_with="filemanager", last_migration_date=20260701 }\n' > "$RUNNER_TEMP/e2e-home/settings.reader.lua"
+          printf 'return { language="en", start_with="filemanager", color_rendering=true, last_migration_date=20260701 }\n' > "$RUNNER_TEMP/e2e-home/settings.reader.lua"
       - name: Start isolated Shelfmark
         run: |
           docker run -d --name shelfmark-e2e -p 127.0.0.1:8084:8084 \

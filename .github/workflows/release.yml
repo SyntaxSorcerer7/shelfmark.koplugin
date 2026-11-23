@@ -11,8 +11,10 @@ concurrency:
 jobs:
   checks:
     uses: ./.github/workflows/check.yml
+  e2e:
+    uses: ./.github/workflows/e2e.yml
   release:
-    needs: checks
+    needs: [checks, e2e]
     runs-on: ubuntu-latest
     permissions:
       contents: write
