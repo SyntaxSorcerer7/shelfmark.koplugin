@@ -139,7 +139,8 @@ assert(instance.session_cookie == nil)
 local home = {page=1, perpage=5, cover_files={}, updateItems=function() end}
 settings_dir = os.tmpname()
 os.remove(settings_dir)
-assert(os.execute("mkdir -p '" .. settings_dir .. "/shelfmark-covers' ") == 0)
+local mkdir_result = os.execute("mkdir -p '" .. settings_dir .. "/shelfmark-covers' ")
+assert(mkdir_result == 0 or mkdir_result == true)
 local downloads = 0
 instance.cover = function()
     downloads = downloads + 1
