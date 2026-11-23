@@ -1,0 +1,44 @@
+name: Publish release
+on:
+  push:
+    tags:
+      - 'v*'
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  checks:
+    uses: ./.github/workflows/check.yml
+  release:
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Validate version and build archive
+        id: package
+        run: |
+          archive=$(python3 tools/package.py --tag "$RELEASE_TAG")
+          python3 -m zipfile -t "$archive"
+          printf 'archive=%s\n' "$archive" >> "$GITHUB_OUTPUT"
+      - name: Publish archive
+        env:
+          RELEASE_ARCHIVE: ${{ steps.package.outputs.archive }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$RELEASE_ARCHIVE" --clobber
+          else
+            options=()
+            if [[ "$RELEASE_TAG" == *-* ]]; then
+              options+=(--prerelease)
+            fi
+            gh release create "$RELEASE_TAG" "$RELEASE_ARCHIVE" \
+              --verify-tag --generate-notes \
+              --title "Shelfmark for KOReader $RELEASE_TAG" "${options[@]}"
+          fi

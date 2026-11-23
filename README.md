@@ -31,7 +31,7 @@ Shelfmark API endpoints used by the plugin are `/api/auth/login`, `/api/metadata
 
 ## Installation
 
-1. Download `shelfmark.koplugin-v0.1.0.zip` from [Releases](https://github.com/SyntaxSorcerer7/shelfmark.koplugin/releases).
+1. Download `shelfmark.koplugin-v0.1.1.zip` from [Releases](https://github.com/SyntaxSorcerer7/shelfmark.koplugin/releases).
 2. Extract it and copy the contained `shelfmark.koplugin` directory into your KOReader data directory's `plugins` folder.
 3. Restart KOReader and enable Shelfmark in plugin management if necessary.
 4. Open **Shelfmark** from the KOReader file browser menu.
@@ -103,6 +103,19 @@ python3 tools/package.py
 The archive is written to `dist/` and contains the runtime files, README and license. Tests and development tooling remain in the source repository.
 
 Report issues with KOReader, Shelfmark and OPDS Plus versions, device model, reproduction steps and relevant logs. Remove passwords, cookies, personal URLs and custom access headers before sharing logs.
+
+## Publishing a release
+
+Pushes and pull requests run the smoke tests and build and check the installable archive. Pushing a tag beginning with `v` also runs the release workflow. Publication starts only after the checks pass and the tag exactly matches the version in `_meta.lua`.
+
+To publish a new version, update `_meta.lua`, commit and push that change, then tag the commit and push the tag. For example, with `version = "0.2.0"` committed on `main`, run the following commands.
+
+```sh
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The workflow creates a GitHub Release with generated notes and attaches the installable ZIP. Versions with a suffix such as `0.2.0-rc.1` produce prereleases. Retrying a run replaces the ZIP on an existing release while preserving its notes. The workflow uses GitHub's built-in token with release-write permission confined to the publishing job.
 
 ## License
 

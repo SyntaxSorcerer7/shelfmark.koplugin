@@ -1,19 +1,20 @@
 name: Plugin checks
 on:
   push:
+    branches:
+      - '**'
   pull_request:
+  workflow_call:
 permissions:
   contents: read
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Install LuaJIT
         run: sudo apt-get update && sudo apt-get install -y luajit
       - name: Run smoke tests
         run: luajit tests/smoke.lua
-      - name: Build plugin archive
-        run: python3 tools/package.py
-      - name: Check archive
-        run: python3 -m zipfile -t dist/shelfmark.koplugin-v0.1.0.zip
+      - name: Build and check plugin archive
+        run: python3 -m zipfile -t "$(python3 tools/package.py)"
