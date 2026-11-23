@@ -1,0 +1,69 @@
+name: End-to-end tests
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SHELFMARK_IMAGE: ghcr.io/calibrain/shelfmark-lite@sha256:b8bbc8ae26282c9cc765162719d2090142edf6c93c01c1eb430e51b1fa746ef2
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Install display dependencies
+        run: sudo apt-get update && sudo apt-get install -y xvfb xauth libsdl2-2.0-0 libasound2t64
+      - name: Prepare pinned KOReader and OPDS Plus
+        run: |
+          mkdir -p "$RUNNER_TEMP/koreader" "$RUNNER_TEMP/e2e-home/patches" "$RUNNER_TEMP/e2e-artifacts"
+          curl -fL --retry 3 https://github.com/koreader/koreader/releases/download/v2026.07.1/koreader-linux-x86_64-v2026.07.1.tar.xz -o "$RUNNER_TEMP/koreader.tar.xz"
+          echo "299aadb28147a25e9432ced1214ea444a4184393b5ae97cf42402c8a61b1a1b0  $RUNNER_TEMP/koreader.tar.xz" | sha256sum -c -
+          tar -xf "$RUNNER_TEMP/koreader.tar.xz" -C "$RUNNER_TEMP/koreader"
+          runtime="$RUNNER_TEMP/koreader/lib/koreader"
+          mkdir -p "$runtime/plugins/shelfmark.koplugin"
+          cp main.lua _meta.lua "$runtime/plugins/shelfmark.koplugin/"
+          git clone https://github.com/greywolf1499/opds_plus.koplugin.git "$runtime/plugins/opds_plus.koplugin"
+          git -C "$runtime/plugins/opds_plus.koplugin" checkout 81bf01cd6337145b529ba9ff1d872db62cd8f0bf
+          cp tests/e2e.lua "$RUNNER_TEMP/e2e-home/patches/2-shelfmark-e2e.lua"
+          printf 'return { language="en", start_with="filemanager", last_migration_date=20260701 }\n' > "$RUNNER_TEMP/e2e-home/settings.reader.lua"
+      - name: Start isolated Shelfmark
+        run: |
+          docker run -d --name shelfmark-e2e -p 127.0.0.1:8084:8084 \
+            -v "$GITHUB_WORKSPACE/tests/e2e_server.py:/e2e_server.py:ro" \
+            --entrypoint /app/.venv/bin/python "$SHELFMARK_IMAGE" /e2e_server.py
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8084/api/health >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          docker logs shelfmark-e2e
+          exit 1
+      - name: Run KOReader online scenario
+        env:
+          SHELFMARK_E2E_PHASE: online
+        run: bash tests/run_e2e.sh
+      - name: Verify generated book and disconnect server
+        run: |
+          docker exec shelfmark-e2e /app/.venv/bin/python -c 'from pathlib import Path; from zipfile import ZipFile; books=list(Path("/tmp/shelfmark-e2e-auth/books").rglob("*.epub")); assert books, "No completed EPUB"; assert ZipFile(books[0]).testzip() is None; print("Shelfmark produced a valid EPUB")'
+          docker stop shelfmark-e2e
+      - name: Run KOReader offline restart scenario
+        env:
+          SHELFMARK_E2E_PHASE: offline
+        run: bash tests/run_e2e.sh
+      - name: Collect server logs
+        if: always()
+        run: docker logs shelfmark-e2e > "$RUNNER_TEMP/e2e-artifacts/shelfmark.log" 2>&1 || true
+      - name: Upload logs and screenshots
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: e2e-results
+          path: ${{ runner.temp }}/e2e-artifacts/
+          retention-days: 7
+      - name: Clean up
+        if: always()
+        run: docker rm -f shelfmark-e2e || true

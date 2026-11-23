@@ -10,7 +10,7 @@ import uuid
 from werkzeug.security import generate_password_hash
 from pathlib import Path
 
-os.environ.update(CONFIG_DIR='/tmp/shelfmark-e2e-auth/config', INGEST_DIR='/tmp/shelfmark-e2e-auth/books', TMP_DIR='/tmp/shelfmark-e2e-auth/tmp', AUTH_METHOD='cwa', CWA_DB_PATH='/tmp/shelfmark-e2e-auth/cwa.db')
+os.environ.update(CONFIG_DIR='/tmp/shelfmark-e2e-auth/config', INGEST_DIR='/tmp/shelfmark-e2e-auth/books', TMP_DIR='/tmp/shelfmark-e2e-auth/tmp', AUTH_METHOD='cwa', CWA_DB_PATH='/tmp/shelfmark-e2e-auth/cwa.db', OPENLIBRARY_ENABLED='true', METADATA_PROVIDER='openlibrary', BOOK_LANGUAGE='de', HARDCOVER_ENABLED='false')
 for folder in ('config', 'books', 'tmp'):
     Path('/tmp/shelfmark-e2e-auth', folder).mkdir(parents=True, exist_ok=True)
 
@@ -22,21 +22,35 @@ with sqlite3.connect(os.environ['CWA_DB_PATH']) as db:
 import shelfmark.metadata_providers as metadata
 from shelfmark.release_sources import Release, ReleaseSource, DownloadHandler, register_source, register_handler
 
-book = metadata.BookMetadata(provider='e2e', provider_id='fixture-1', title='Das Testbuch', authors=['Test Autor'], description='Eine Geschichte für den Shelfmark-Integrationstest. Diese Beschreibung wird in den Buchdetails angezeigt.', cover_url='/api/e2e-cover')
-class Provider:
-    name = 'e2e'
-    display_name = 'Testdaten'
-    search_fields = ()
-    account_search_fields = frozenset()
-    def is_available(self): return True
-    def search_paginated(self, options): return metadata.SearchResult(books=[book] if 'test' in options.query.lower() else [])
-    def get_book(self, book_id): return book if book_id == book.provider_id else None
+# Deterministic external adapters. Shelfmark's HTTP routes, auth, metadata
+# registry, queue and post-processing are unchanged.
+metadata._PROVIDERS.clear()
+book = metadata.BookMetadata(provider='openlibrary', provider_id='fixture-1', title='Das Testbuch', authors=['Test Autor'], description='Eine Geschichte für den Shelfmark-Integrationstest.', cover_url='/api/e2e-cover', language='de')
 
-metadata.get_configured_provider = lambda **kwargs: Provider()
-metadata.is_provider_registered = lambda name: name == 'e2e'
-metadata.is_provider_enabled = lambda name: name == 'e2e'
-metadata.get_provider_kwargs = lambda name: {}
-metadata.get_provider = lambda name, **kwargs: Provider()
+@metadata.register_provider('openlibrary')
+class Provider(metadata.MetadataProvider):
+    name = 'openlibrary'
+    display_name = 'Test Library'
+    requires_auth = False
+    search_fields = (
+        metadata.TextSearchField(key='author', label='Author'),
+        metadata.TextSearchField(key='title', label='Title'),
+    )
+    def is_available(self): return True
+    def search(self, options):
+        query = options.query or options.fields.get('author') or options.fields.get('title') or ''
+        return [book] if 'test' in query.lower() else []
+    def get_book(self, book_id): return book if book_id == book.provider_id else None
+    def search_by_isbn(self, isbn): return None
+
+@metadata.register_provider('disabled_fixture')
+class DisabledProvider(Provider):
+    name = 'disabled_fixture'
+    display_name = 'Disabled Library'
+
+# Prevent a test request from reaching a real download source.
+import shelfmark.release_sources as sources
+sources._SOURCES.clear()
 
 @register_source('e2e')
 class FixtureSource(ReleaseSource):
@@ -75,6 +89,13 @@ def opds_search():
     else:
         entry = ''
     return Response('<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><id>search</id><title>Suchergebnisse</title>' + entry + '</feed>', mimetype='application/atom+xml')
+
+@app.get('/test.epub')
+def test_epub():
+    from flask import send_file
+    files = list(Path('/tmp/shelfmark-e2e-auth/books').rglob('*.epub'))
+    assert files, 'Shelfmark has not completed the test book'
+    return send_file(files[0], mimetype='application/epub+zip')
 
 @app.get('/api/e2e-cover')
 def cover():
